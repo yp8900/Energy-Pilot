@@ -23,7 +23,7 @@ export interface IStorage {
   // Alerts
   getAlerts(status?: 'active' | 'acknowledged' | 'all'): Promise<(Alert & { deviceName: string })[]>;
   createAlert(alert: InsertAlert): Promise<Alert>;
-  acknowledgeAlert(id: number, userId: number): Promise<Alert>;
+  acknowledgeAlert(id: number, userId: string): Promise<Alert>;
 
   // Analytics
   getAnalyticsOverview(): Promise<{
@@ -109,7 +109,7 @@ export class DatabaseStorage implements IStorage {
     return newAlert;
   }
 
-  async acknowledgeAlert(id: number, userId?: number): Promise<Alert> {
+  async acknowledgeAlert(id: number, userId?: string): Promise<Alert> {
     // Note: userId is optional in the interface but recommended for audit
     const [updated] = await db.update(alerts)
       .set({

@@ -1,18 +1,22 @@
-import { pgTable, text, serial, integer, boolean, timestamp, doublePrecision, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, doublePrecision, jsonb, varchar } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { sql } from "drizzle-orm";
 
 export * from "./models/auth";
 
 // === TABLE DEFINITIONS ===
 
 export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
-  // Replit Auth doesn't use passwords, but we keep the structure compatible if needed or for profile info
   email: text("email"),
   role: text("role").default("operator"), // admin, operator, viewer
+  firstName: varchar("first_name"),
+  lastName: varchar("last_name"),
+  profileImageUrl: varchar("profile_image_url"),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const devices = pgTable("devices", {
@@ -46,7 +50,7 @@ export const alerts = pgTable("alerts", {
   message: text("message").notNull(),
   timestamp: timestamp("timestamp").defaultNow(),
   acknowledged: boolean("acknowledged").default(false),
-  acknowledgedBy: integer("acknowledged_by").references(() => users.id),
+  acknowledgedBy: varchar("acknowledged_by").references(() => users.id),
   acknowledgedAt: timestamp("acknowledged_at"),
 });
 
