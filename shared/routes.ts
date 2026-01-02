@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { insertDeviceSchema, insertAlertSchema, devices, readings, alerts, users } from './schema';
+import { insertDeviceSchema, insertAlertSchema, insertThresholdSchema, devices, readings, alerts, users, thresholds } from './schema';
 
 // === SHARED ERROR SCHEMAS ===
 export const errorSchemas = {
@@ -137,6 +137,73 @@ export const api = {
           onlineDevices: z.number(),
           totalDevices: z.number(),
         }),
+      },
+    },
+    consumption: {
+      method: 'GET' as const,
+      path: '/api/analytics/consumption',
+      responses: {
+        200: z.array(z.object({
+          date: z.string(),
+          deviceId: z.number(),
+          deviceName: z.string(),
+          energy: z.number(),
+          power: z.number(),
+          cost: z.number(),
+        })),
+      },
+    },
+    export: {
+      method: 'POST' as const,
+      path: '/api/analytics/export',
+      input: z.object({
+        timeRange: z.enum(['daily', 'weekly', 'monthly', 'custom']),
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+        format: z.enum(['csv', 'excel']).default('csv'),
+      }),
+      responses: {
+        200: z.object({
+          data: z.string(),
+          filename: z.string(),
+        }),
+      },
+    },
+  },
+
+  // --- THRESHOLDS ---
+  thresholds: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/thresholds',
+      responses: {
+        200: z.array(z.custom<typeof thresholds.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/thresholds',
+      input: z.custom<typeof insertThresholdSchema>(),
+      responses: {
+        201: z.custom<typeof thresholds.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PUT' as const,
+      path: '/api/thresholds/:id',
+      input: z.custom<Partial<typeof insertThresholdSchema>>(),
+      responses: {
+        200: z.custom<typeof thresholds.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/thresholds/:id',
+      responses: {
+        200: z.object({ success: z.boolean() }),
+        404: errorSchemas.notFound,
       },
     },
   },

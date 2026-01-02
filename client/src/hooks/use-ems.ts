@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
-import { type InsertDevice, type InsertAlert } from "@shared/schema";
+import { type InsertDevice, type InsertAlert, type InsertThreshold } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 
 // === DEVICES HOOKS ===
@@ -68,6 +68,44 @@ export function useDeleteDevice() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.devices.list.path] });
       toast({ title: "Device Removed", description: "Device has been removed from the system." });
+    },
+  });
+}
+
+export function useUpdateDevice() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Partial<InsertDevice> }) => {
+      console.log('useUpdateDevice called with:', { id, data });
+      const validated = api.devices.update.input.parse(data);
+      console.log('Validated data:', validated);
+      const url = buildUrl(api.devices.update.path, { id });
+      console.log('Update URL:', url);
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(validated),
+      });
+      console.log('Response status:', res.status);
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('Update failed:', errorText);
+        throw new Error("Failed to update device");
+      }
+      const result = await res.json();
+      console.log('Update result:', result);
+      return api.devices.update.responses[200].parse(result);
+    },
+    onSuccess: () => {
+      console.log('Update successful, invalidating queries');
+      queryClient.invalidateQueries({ queryKey: [api.devices.list.path] });
+      toast({ title: "Device Updated", description: "Device information has been updated." });
+    },
+    onError: (error) => {
+      console.error('Update error in hook:', error);
+      toast({ title: "Error", description: "Failed to update device.", variant: "destructive" });
     },
   });
 }
@@ -146,5 +184,80 @@ export function useAnalyticsOverview() {
       return api.analytics.overview.responses[200].parse(await res.json());
     },
     refetchInterval: 10000,
+  });
+}
+
+// === THRESHOLDS HOOKS ===
+
+export function useThresholds() {
+  return useQuery({
+    queryKey: [api.thresholds.list.path],
+    queryFn: async () => {
+      const res = await fetch(api.thresholds.list.path);
+      if (!res.ok) throw new Error("Failed to fetch thresholds");
+      return api.thresholds.list.responses[200].parse(await res.json());
+    },
+  });
+}
+
+export function useCreateThreshold() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (data: InsertThreshold) => {
+      const validated = api.thresholds.create.input.parse(data);
+      const res = await fetch(api.thresholds.create.path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(validated),
+      });
+      if (!res.ok) throw new Error("Failed to create threshold");
+      return api.thresholds.create.responses[201].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.thresholds.list.path] });
+      toast({ title: "Threshold Added", description: "New alarm threshold has been configured." });
+    },
+  });
+}
+
+export function useUpdateThreshold() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Partial<InsertThreshold> }) => {
+      const url = buildUrl(api.thresholds.update.path, { id });
+      const validated = api.thresholds.update.input.parse(data);
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(validated),
+      });
+      if (!res.ok) throw new Error("Failed to update threshold");
+      return api.thresholds.update.responses[200].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.thresholds.list.path] });
+      toast({ title: "Threshold Updated", description: "Alarm threshold configuration has been saved." });
+    },
+  });
+}
+
+export function useDeleteThreshold() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const url = buildUrl(api.thresholds.delete.path, { id });
+      const res = await fetch(url, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete threshold");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.thresholds.list.path] });
+      toast({ title: "Threshold Deleted", description: "Alarm threshold has been removed." });
+    },
   });
 }

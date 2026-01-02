@@ -1,0 +1,105 @@
+{
+  "_comment": "To add new calculations, copy this example and modify:",
+  "_example": "Uncomment and edit the block below",
+  "__EXAMPLE__yourCustomCalc": {
+    "__name": "Your Calculation Name",
+    "__description": "What it calculates",
+    "__formula": "(totalEnergy * 2) + avgPower",
+    "__parameters": ["totalEnergy", "avgPower"],
+    "__unit": "kWh",
+    "__category": "Custom",
+    "__icon": "🔥",
+    "__availableParams": "totalEnergy, totalCost, avgPower, maxPower, deviceCount, daysElapsed, avgVoltage, avgCurrent, sumOfIndividualPeaks, systemPeak"
+  },
+
+  "energyEfficiency": {
+    "name": "Energy Efficiency Rating",
+    "description": "Measures how much energy you get per rupee spent",
+    "formula": "(totalEnergy / totalCost) * 100",
+    "parameters": ["totalEnergy", "totalCost"],
+    "unit": "kWh/₹100",
+    "category": "Efficiency",
+    "icon": "⚡"
+  },
+  "loadFactor": {
+    "name": "Load Factor",
+    "description": "Ratio of average to peak load - higher is better",
+    "formula": "(avgPower / maxPower) * 100",
+    "parameters": ["avgPower", "maxPower"],
+    "unit": "%",
+    "category": "Performance",
+    "icon": "📊"
+  },
+  "peakDemandCharge": {
+    "name": "Peak Demand Charge",
+    "description": "Estimated charge based on maximum demand",
+    "formula": "maxPower * 150",
+    "parameters": ["maxPower"],
+    "unit": "₹",
+    "category": "Cost",
+    "icon": "💰"
+  },
+  "diversityFactor": {
+    "name": "Diversity Factor",
+    "description": "Sum of individual peaks vs system peak",
+    "formula": "(sumOfIndividualPeaks / systemPeak) * 100",
+    "parameters": ["sumOfIndividualPeaks", "systemPeak"],
+    "unit": "%",
+    "category": "Performance",
+    "icon": "🔀"
+  },
+  "carbonFootprint": {
+    "name": "Carbon Footprint",
+    "description": "Estimated CO2 emissions (0.82 kg CO2/kWh)",
+    "formula": "totalEnergy * 0.82",
+    "parameters": ["totalEnergy"],
+    "unit": "kg CO2",
+    "category": "Environment",
+    "icon": "🌍"
+  },
+  "costPerDevice": {
+    "name": "Average Cost per Device",
+    "description": "Total cost divided by number of active devices",
+    "formula": "totalCost / deviceCount",
+    "parameters": ["totalCost", "deviceCount"],
+    "unit": "₹/device",
+    "category": "Cost",
+    "icon": "💵"
+  },
+  "dailyAverage": {
+    "name": "Daily Average Consumption",
+    "description": "Average energy consumption per day",
+    "formula": "totalEnergy / daysElapsed",
+    "parameters": ["totalEnergy", "daysElapsed"],
+    "unit": "kWh/day",
+    "category": "Usage",
+    "icon": "📅"
+  },
+  "powerQuality": {
+    "name": "Power Quality Index",
+    "description": "Voltage stability indicator (closer to 100% is better)",
+    "formula": "(avgVoltage / 230) * 100",
+    "parameters": ["avgVoltage"],
+    "unit": "%",
+    "category": "Quality",
+    "icon": "⚙️"
+  },
+  "apparentPower": {
+    "name": "Apparent Power",
+    "description": "Calculated from average voltage and current",
+    "formula": "(avgVoltage * avgCurrent) / 1000",
+    "parameters": ["avgVoltage", "avgCurrent"],
+    "unit": "kVA",
+    "category": "Performance",
+    "icon": "⚡"
+  },
+  "currentUtilization": {
+    "name": "Current Utilization",
+    "description": "Average current draw across all devices",
+    "formula": "avgCurrent",
+    "parameters": ["avgCurrent"],
+    "unit": "A",
+    "category": "Usage",
+    "icon": "🔌"
+  }
+}

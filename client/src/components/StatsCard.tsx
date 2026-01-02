@@ -7,11 +7,12 @@ interface StatsCardProps {
   unit?: string;
   icon?: ReactNode;
   trend?: { value: number; isPositive: boolean };
+  description?: string;
   className?: string;
   alert?: boolean;
 }
 
-export function StatsCard({ title, value, unit, icon, trend, className, alert }: StatsCardProps) {
+export function StatsCard({ title, value, unit, icon, trend, description, className, alert }: StatsCardProps) {
   return (
     <div className={cn(
       "glass-panel p-6 rounded-xl relative overflow-hidden group hover:bg-card/90 transition-all duration-300",
@@ -38,6 +39,12 @@ export function StatsCard({ title, value, unit, icon, trend, className, alert }:
         </h3>
         {unit && <span className="text-sm text-muted-foreground font-medium ml-1">{unit}</span>}
       </div>
+
+      {description && (
+        <div className="mt-2">
+          <p className="text-xs text-muted-foreground/70">{description}</p>
+        </div>
+      )}
 
       {trend && (
         <div className="mt-4 flex items-center text-xs font-medium">

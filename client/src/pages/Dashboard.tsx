@@ -1,22 +1,29 @@
-import { Zap, Activity, AlertTriangle, Server } from "lucide-react";
+import { Zap, Activity, AlertTriangle, Server, Calendar, Clock } from "lucide-react";
 import { StatsCard } from "@/components/StatsCard";
 import { StatusIndicator } from "@/components/StatusIndicator";
 import { MetricGauge } from "@/components/MetricGauge";
 import { useDevices, useAnalyticsOverview, useAlerts } from "@/hooks/use-ems";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { format } from "date-fns";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { type Reading } from "@shared/schema";
 
-// Mock data for the chart until we have real historical data hooked up completely
-const chartData = Array.from({ length: 24 }, (_, i) => ({
-  time: `${i}:00`,
-  power: Math.floor(Math.random() * 50) + 100,
-  voltage: 230 + Math.random() * 5,
-}));
-
-function DeviceGridItem({ device }: { device: any }) {
-  // Use latest reading hook here if needed, or pass from parent
-  // For dashboard grid, we assume basic info is enough or mock current values
-  const power = device.status === 'online' ? (Math.random() * 10 + 5).toFixed(1) : 0;
+function DeviceGridItem({ device, reading }: { device: any; reading?: Reading }) {
+  // Use real BACnet data from reading
+  const power = reading?.power || 0;
+  const voltage = reading?.voltage || 0;
+  const current = reading?.current || 0;
+  const isOffline = device.status !== 'online';
+  // Check if we have meaningful data - need at least 2 valid parameters
+  const validParams = [
+    reading?.power && reading.power > 0,
+    reading?.voltage && reading.voltage > 0,
+    reading?.current && reading.current > 0,
+    reading?.frequency && reading.frequency > 0
+  ].filter(Boolean).length;
+  const hasData = reading && validParams >= 2;
   
   return (
     <div className="bg-card border border-border/50 rounded-xl p-5 hover:border-primary/30 transition-all group">
@@ -29,18 +36,24 @@ function DeviceGridItem({ device }: { device: any }) {
       </div>
       
       <div className="space-y-4">
-        <MetricGauge label="Load" value={Number(power)} max={20} unit="kW" color="primary" />
+        <MetricGauge 
+          label="Load" 
+          value={isOffline || !hasData ? 0 : power} 
+          max={100} 
+          unit="kW" 
+          color="primary" 
+        />
         <div className="grid grid-cols-2 gap-4 pt-2">
           <div>
             <span className="text-xs text-muted-foreground block">Voltage</span>
-            <span className="font-mono text-sm font-medium">
-              {device.status === 'online' ? '230.1' : '0.0'} <span className="text-xs text-muted-foreground">V</span>
+            <span className={`font-mono text-sm font-medium ${!hasData ? 'text-red-500' : ''}`}>
+              {!hasData ? 'N/A' : isOffline ? '0.0' : voltage.toFixed(1)} {hasData && <span className="text-xs text-muted-foreground">V</span>}
             </span>
           </div>
           <div>
             <span className="text-xs text-muted-foreground block">Current</span>
-            <span className="font-mono text-sm font-medium">
-              {device.status === 'online' ? '24.5' : '0.0'} <span className="text-xs text-muted-foreground">A</span>
+            <span className={`font-mono text-sm font-medium ${!hasData ? 'text-red-500' : ''}`}>
+              {!hasData ? 'N/A' : isOffline ? '0.0' : current.toFixed(1)} {hasData && <span className="text-xs text-muted-foreground">A</span>}
             </span>
           </div>
         </div>
@@ -50,27 +63,120 @@ function DeviceGridItem({ device }: { device: any }) {
 }
 
 export default function Dashboard() {
+  const [selectedPeriod, setSelectedPeriod] = useState("today");
   const { data: analytics } = useAnalyticsOverview();
   const { data: devices, isLoading: isLoadingDevices } = useDevices();
   const { data: alerts } = useAlerts('active');
 
   const activeAlertsCount = alerts?.length || 0;
 
+  // Fetch current readings for all devices
+  const { data: deviceReadings } = useQuery({
+    queryKey: ["device-readings"],
+    queryFn: async () => {
+      if (!devices || devices.length === 0) return {};
+      
+      const readingsMap: Record<number, Reading> = {};
+      await Promise.all(
+        devices.map(async (device) => {
+          try {
+            const res = await fetch(`/api/meters/${device.id}/reading`);
+            if (res.ok) {
+              const reading = await res.json() as Reading;
+              readingsMap[device.id] = reading;
+            }
+          } catch (error) {
+            console.error(`Failed to fetch reading for device ${device.id}:`, error);
+          }
+        })
+      );
+      return readingsMap;
+    },
+    enabled: !!devices && devices.length > 0,
+    refetchInterval: 2000, // Real-time updates every 2 seconds
+  });
+
+  // Fetch period-specific analytics
+  const { data: periodData } = useQuery({
+    queryKey: ["analytics-period", selectedPeriod],
+    queryFn: async () => {
+      const res = await fetch(`/api/analytics/periods?period=${selectedPeriod}`);
+      if (!res.ok) throw new Error("Failed to fetch period analytics");
+      return res.json();
+    },
+    refetchInterval: 5000,
+  });
+
+  // Fetch 24-hour power consumption trend data
+  const { data: trendData } = useQuery({
+    queryKey: ["power-trend"],
+    queryFn: async () => {
+      const res = await fetch("/api/analytics/power-trend?hours=24");
+      if (!res.ok) throw new Error("Failed to fetch power trend");
+      return res.json();
+    },
+    refetchInterval: 10000, // Update every 10 seconds
+  });
+
+  const chartData = trendData || [];
+
+  const getPeriodLabel = () => {
+    switch (selectedPeriod) {
+      case "today": return "Today's";
+      case "week": return "This Week's";
+      case "month": return "This Month's";
+      default: return "Current";
+    }
+  };
+
+  const getTimeLabel = () => {
+    switch (selectedPeriod) {
+      case "today": return `${periodData?.hours?.toFixed(1) || 0} hours elapsed`;
+      case "week": return `${((periodData?.hours || 0) / 24).toFixed(1)} days elapsed`;
+      case "month": return `${((periodData?.hours || 0) / 24).toFixed(1)} days elapsed`;
+      default: return "";
+    }
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight mb-2">Plant Overview</h1>
-        <p className="text-muted-foreground">Real-time monitoring of energy consumption and device status.</p>
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight mb-2">Plant Overview</h1>
+          <p className="text-muted-foreground">Real-time monitoring of energy consumption and device status.</p>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+          <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="week">This Week</SelectItem>
+              <SelectItem value="month">This Month</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Top Metrics Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatsCard
-          title="Total Power"
-          value={analytics?.totalConsumption.toFixed(1) || "0.0"}
-          unit="kW"
+          title={`${getPeriodLabel()} Consumption`}
+          value={periodData?.consumption?.toFixed(1) || "0.0"}
+          unit="kWh"
           icon={<Zap className="h-5 w-5" />}
-          trend={{ value: 2.5, isPositive: true }}
+          description={getTimeLabel()}
+          trend={periodData?.trend || undefined}
+        />
+        <StatsCard
+          title={`${getPeriodLabel()} Cost`}
+          value={`₹${(periodData?.cost?.toFixed(0) || "0")}`}
+          unit="INR"
+          icon={<Clock className="h-5 w-5" />}
+          description={`@ ₹8/kWh rate`}
         />
         <StatsCard
           title="Active Alarms"
@@ -84,12 +190,7 @@ export default function Dashboard() {
           value={analytics?.onlineDevices || 0}
           unit={`/ ${analytics?.totalDevices || 0}`}
           icon={<Server className="h-5 w-5" />}
-        />
-        <StatsCard
-          title="Grid Frequency"
-          value="50.02"
-          unit="Hz"
-          icon={<Activity className="h-5 w-5" />}
+          description={periodData?.devicesWithData ? `${periodData.devicesWithData} with valid data` : undefined}
         />
       </div>
 
@@ -192,7 +293,11 @@ export default function Dashboard() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {devices?.map((device) => (
-              <DeviceGridItem key={device.id} device={device} />
+              <DeviceGridItem 
+                key={device.id} 
+                device={device} 
+                reading={deviceReadings?.[device.id]}
+              />
             ))}
           </div>
         )}

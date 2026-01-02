@@ -1,8 +1,8 @@
-# PlantEMS - Industrial Energy Management System
+# EnCharge - Industrial Energy Management System
 
 ## Overview
 
-PlantEMS is an industrial energy management system (EMS) designed for monitoring and controlling power consumption, devices, and alerts in plant/factory environments. The application provides real-time dashboards for tracking energy metrics, device status, and system alarms with a dark industrial-themed UI.
+EnCharge is an industrial energy management system (EMS) designed for monitoring and controlling power consumption, devices, and alerts in plant/factory environments. The application provides real-time dashboards for tracking energy metrics, device status, and system alarms with a dark industrial-themed UI.
 
 The system follows a full-stack TypeScript architecture with React frontend and Express backend, using PostgreSQL for data persistence. It implements Replit Auth for authentication and provides real-time data refresh capabilities for monitoring industrial equipment.
 
