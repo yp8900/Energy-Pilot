@@ -556,7 +556,7 @@ export default function Analytics() {
                 onChange={(e) => setSelectedDeviceId(e.target.value ? Number(e.target.value) : null)}
                 className="px-3 py-1 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 min-w-[180px]"
               >
-                {devices?.filter(device => device.type === 'smart_meter' || device.type === 'Smart Meter').map(device => (
+                {devices?.filter(device => device.type === 'smart_meter' || device.type === 'Smart Meter' || device.type === 'energy_meter').map(device => (
                   <option key={device.id} value={device.id}>
                     {device.name} - {device.location}
                   </option>

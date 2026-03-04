@@ -8,3 +8,4 @@ vite.config.ts.*
 .local/
 *.zip
 server-log.txt
+exported-data/

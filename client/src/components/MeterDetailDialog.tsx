@@ -167,63 +167,293 @@ export function MeterDetailDialog({ meter, open, onOpenChange }: MeterDetailDial
           </TabsList>
 
           <TabsContent value="realtime" className="space-y-3">
-            {parameters.length > 0 ? (
+            {currentReading || parameters.length > 0 ? (
               <>
                 <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                  <span>📊</span> All BACnet Parameters ({parameters.length})
+                  <span>📊</span> Live Meter Readings
+                  {currentReading?.timestamp && (
+                    <span className="text-xs text-muted-foreground font-normal">
+                      Last Updated: {new Date(currentReading.timestamp).toLocaleTimeString()}
+                    </span>
+                  )}
                 </h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {parameters.map((param, idx) => {
-                    const getIcon = () => {
-                      const name = param.objectName?.toLowerCase() || '';
-                      if (name.includes('voltage')) return { icon: '⚡', color: 'border-yellow-500' };
-                      if (name.includes('current')) return { icon: '🔌', color: 'border-purple-500' };
-                      if (name.includes('power') && !name.includes('factor')) return { icon: '💡', color: 'border-blue-500' };
-                      if (name.includes('energy') || name.includes('kwh')) return { icon: '🔋', color: 'border-green-500' };
-                      if (name.includes('frequency') || name.includes('freq')) return { icon: '〰️', color: 'border-orange-500' };
-                      if (name.includes('factor')) return { icon: '📊', color: 'border-gray-400' };
-                      return { icon: '📈', color: 'border-teal-500' };
-                    };
-                    const { icon, color } = getIcon();
-                    
-                    // Get live value from BACnet device
-                    const liveParam = parameterValues?.parameters?.find(
-                      p => p.objectType === param.objectType && p.objectInstance === param.objectInstance
-                    );
-                    
-                    const displayValue = liveParam?.currentValue !== null && liveParam?.currentValue !== undefined
-                      ? liveParam.currentValue.toFixed(2)
-                      : '--';
-                    const unit = param.objectName?.includes('[') 
-                      ? param.objectName.match(/\[(.*?)\]/)?.[1] || ''
-                      : '';
-                    
-                    return (
-                      <Card key={idx} className={`border-l-4 ${color} h-full`}>
+                
+                {/* Direct Reading Parameters */}
+                {currentReading && (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
+                    {/* Power */}
+                    {currentReading.power !== null && currentReading.power !== undefined && (
+                      <Card className="border-l-4 border-blue-500 h-full">
                         <CardHeader className="pb-2 pt-3 px-3">
                           <div className="flex items-center gap-2">
-                            <span className="text-xl">{icon}</span>
-                            <CardTitle className="text-xs font-medium line-clamp-2" title={param.objectName || ''}>
-                              {param.objectName?.replace(/_/g, ' ')}
-                            </CardTitle>
+                            <span className="text-xl">💡</span>
+                            <CardTitle className="text-xs font-medium">Active Power</CardTitle>
                           </div>
                         </CardHeader>
                         <CardContent className="px-3 pb-3">
                           <div className="flex items-baseline gap-1">
-                            <p className="text-2xl font-bold">
-                              {displayValue}
-                            </p>
-                            {unit && <span className="text-sm font-mono">{unit}</span>}
+                            <p className="text-2xl font-bold">{currentReading.power.toFixed(2)}</p>
+                            <span className="text-sm font-mono">kW</span>
                           </div>
                         </CardContent>
                       </Card>
-                    );
-                  })}
-                </div>
+                    )}
+
+                    {/* Energy */}
+                    {currentReading.energy !== null && currentReading.energy !== undefined && (
+                      <Card className="border-l-4 border-green-500 h-full">
+                        <CardHeader className="pb-2 pt-3 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">🔋</span>
+                            <CardTitle className="text-xs font-medium">Total Energy</CardTitle>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3">
+                          <div className="flex items-baseline gap-1">
+                            <p className="text-2xl font-bold">{currentReading.energy.toFixed(1)}</p>
+                            <span className="text-sm font-mono">kWh</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Voltage Average */}
+                    {currentReading.voltage !== null && currentReading.voltage !== undefined && (
+                      <Card className="border-l-4 border-yellow-500 h-full">
+                        <CardHeader className="pb-2 pt-3 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">⚡</span>
+                            <CardTitle className="text-xs font-medium">Voltage (Avg)</CardTitle>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3">
+                          <div className="flex items-baseline gap-1">
+                            <p className="text-2xl font-bold">{currentReading.voltage.toFixed(1)}</p>
+                            <span className="text-sm font-mono">V</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Current Average */}
+                    {currentReading.current !== null && currentReading.current !== undefined && (
+                      <Card className="border-l-4 border-purple-500 h-full">
+                        <CardHeader className="pb-2 pt-3 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">🔌</span>
+                            <CardTitle className="text-xs font-medium">Current (Avg)</CardTitle>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3">
+                          <div className="flex items-baseline gap-1">
+                            <p className="text-2xl font-bold">{currentReading.current.toFixed(1)}</p>
+                            <span className="text-sm font-mono">A</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Frequency */}
+                    {currentReading.frequency !== null && currentReading.frequency !== undefined && (
+                      <Card className="border-l-4 border-orange-500 h-full">
+                        <CardHeader className="pb-2 pt-3 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">〰️</span>
+                            <CardTitle className="text-xs font-medium">Frequency</CardTitle>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3">
+                          <div className="flex items-baseline gap-1">
+                            <p className="text-2xl font-bold">{currentReading.frequency.toFixed(2)}</p>
+                            <span className="text-sm font-mono">Hz</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* Power Factor */}
+                    {currentReading.powerFactor !== null && currentReading.powerFactor !== undefined && (
+                      <Card className="border-l-4 border-gray-400 h-full">
+                        <CardHeader className="pb-2 pt-3 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">📊</span>
+                            <CardTitle className="text-xs font-medium">Power Factor</CardTitle>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3">
+                          <div className="flex items-baseline gap-1">
+                            <p className="text-2xl font-bold">{currentReading.powerFactor.toFixed(3)}</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* 3-Phase Voltages */}
+                    {currentReading.voltageL1L2 !== null && currentReading.voltageL1L2 !== undefined && (
+                      <Card className="border-l-4 border-yellow-600 h-full">
+                        <CardHeader className="pb-2 pt-3 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">⚡</span>
+                            <CardTitle className="text-xs font-medium">Voltage L1-L2</CardTitle>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3">
+                          <div className="flex items-baseline gap-1">
+                            <p className="text-2xl font-bold">{currentReading.voltageL1L2.toFixed(1)}</p>
+                            <span className="text-sm font-mono">V</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {currentReading.voltageL2L3 !== null && currentReading.voltageL2L3 !== undefined && (
+                      <Card className="border-l-4 border-yellow-600 h-full">
+                        <CardHeader className="pb-2 pt-3 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">⚡</span>
+                            <CardTitle className="text-xs font-medium">Voltage L2-L3</CardTitle>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3">
+                          <div className="flex items-baseline gap-1">
+                            <p className="text-2xl font-bold">{currentReading.voltageL2L3.toFixed(1)}</p>
+                            <span className="text-sm font-mono">V</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {currentReading.voltageL3L1 !== null && currentReading.voltageL3L1 !== undefined && (
+                      <Card className="border-l-4 border-yellow-600 h-full">
+                        <CardHeader className="pb-2 pt-3 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">⚡</span>
+                            <CardTitle className="text-xs font-medium">Voltage L3-L1</CardTitle>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3">
+                          <div className="flex items-baseline gap-1">
+                            <p className="text-2xl font-bold">{currentReading.voltageL3L1.toFixed(1)}</p>
+                            <span className="text-sm font-mono">V</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {/* 3-Phase Currents */}
+                    {currentReading.currentL1 !== null && currentReading.currentL1 !== undefined && (
+                      <Card className="border-l-4 border-purple-600 h-full">
+                        <CardHeader className="pb-2 pt-3 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">🔌</span>
+                            <CardTitle className="text-xs font-medium">Current L1</CardTitle>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3">
+                          <div className="flex items-baseline gap-1">
+                            <p className="text-2xl font-bold">{currentReading.currentL1.toFixed(1)}</p>
+                            <span className="text-sm font-mono">A</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {currentReading.currentL2 !== null && currentReading.currentL2 !== undefined && (
+                      <Card className="border-l-4 border-purple-600 h-full">
+                        <CardHeader className="pb-2 pt-3 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">🔌</span>
+                            <CardTitle className="text-xs font-medium">Current L2</CardTitle>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3">
+                          <div className="flex items-baseline gap-1">
+                            <p className="text-2xl font-bold">{currentReading.currentL2.toFixed(1)}</p>
+                            <span className="text-sm font-mono">A</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {currentReading.currentL3 !== null && currentReading.currentL3 !== undefined && (
+                      <Card className="border-l-4 border-purple-600 h-full">
+                        <CardHeader className="pb-2 pt-3 px-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">🔌</span>
+                            <CardTitle className="text-xs font-medium">Current L3</CardTitle>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="px-3 pb-3">
+                          <div className="flex items-baseline gap-1">
+                            <p className="text-2xl font-bold">{currentReading.currentL3.toFixed(1)}</p>
+                            <span className="text-sm font-mono">A</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+                )}
+
+                {/* BACnet Parameters (if configured) */}
+                {parameters.length > 0 && (
+                  <>
+                    <h3 className="text-sm font-semibold mb-3 flex items-center gap-2 mt-6">
+                      <span>🔧</span> BACnet Parameters ({parameters.length})
+                    </h3>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {parameters.map((param, idx) => {
+                        const getIcon = () => {
+                          const name = param.objectName?.toLowerCase() || '';
+                          if (name.includes('voltage')) return { icon: '⚡', color: 'border-yellow-500' };
+                          if (name.includes('current')) return { icon: '🔌', color: 'border-purple-500' };
+                          if (name.includes('power') && !name.includes('factor')) return { icon: '💡', color: 'border-blue-500' };
+                          if (name.includes('energy') || name.includes('kwh')) return { icon: '🔋', color: 'border-green-500' };
+                          if (name.includes('frequency') || name.includes('freq')) return { icon: '〰️', color: 'border-orange-500' };
+                          if (name.includes('factor')) return { icon: '📊', color: 'border-gray-400' };
+                          return { icon: '📈', color: 'border-teal-500' };
+                        };
+                        const { icon, color } = getIcon();
+                        
+                        // Get live value from BACnet device
+                        const liveParam = parameterValues?.parameters?.find(
+                          p => p.objectType === param.objectType && p.objectInstance === param.objectInstance
+                        );
+                        
+                        const displayValue = liveParam?.currentValue !== null && liveParam?.currentValue !== undefined
+                          ? liveParam.currentValue.toFixed(2)
+                          : '--';
+                        const unit = param.objectName?.includes('[') 
+                          ? param.objectName.match(/\[(.*?)\]/)?.[1] || ''
+                          : '';
+                        
+                        return (
+                          <Card key={idx} className={`border-l-4 ${color} h-full`}>
+                            <CardHeader className="pb-2 pt-3 px-3">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xl">{icon}</span>
+                                <CardTitle className="text-xs font-medium line-clamp-2" title={param.objectName || ''}>
+                                  {param.objectName?.replace(/_/g, ' ')}
+                                </CardTitle>
+                              </div>
+                            </CardHeader>
+                            <CardContent className="px-3 pb-3">
+                              <div className="flex items-baseline gap-1">
+                                <p className="text-2xl font-bold">
+                                  {displayValue}
+                                </p>
+                                {unit && <span className="text-sm font-mono">{unit}</span>}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </>
             ) : (
               <div className="text-center py-8 text-muted-foreground">
-                <p>No parameters configured for this meter.</p>
+                <p>No data available for this meter.</p>
               </div>
             )}
           </TabsContent>
@@ -411,6 +641,97 @@ export function MeterDetailDialog({ meter, open, onOpenChange }: MeterDetailDial
                 </div>
               </CardContent>
             </Card>
+
+            {/* Meter Configuration */}
+            {meter.config && typeof meter.config === 'object' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Meter Configuration</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {(meter.config as any).manufacturer && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Manufacturer</label>
+                        <p className="font-semibold">{(meter.config as any).manufacturer}</p>
+                      </div>
+                    )}
+                    {(meter.config as any).model && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Model</label>
+                        <p className="font-semibold">{(meter.config as any).model}</p>
+                      </div>
+                    )}
+                    {(meter.config as any).phases && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Phases</label>
+                        <p className="font-semibold">{(meter.config as any).phases}-Phase</p>
+                      </div>
+                    )}
+                    {(meter.config as any).ratedVoltage && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Rated Voltage</label>
+                        <p className="font-semibold">{(meter.config as any).ratedVoltage} V</p>
+                      </div>
+                    )}
+                    {(meter.config as any).ratedCurrent && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Rated Current</label>
+                        <p className="font-semibold">{(meter.config as any).ratedCurrent} A</p>
+                      </div>
+                    )}
+                    {(meter.config as any).modbusAddress && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Modbus Address</label>
+                        <p className="font-semibold">{(meter.config as any).modbusAddress}</p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Current Reading Summary */}
+            {currentReading && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Current Reading Summary</CardTitle>
+                  <CardDescription>
+                    Last updated: {new Date(currentReading.timestamp).toLocaleString()}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <div className="border-l-4 border-blue-500 pl-3">
+                      <label className="text-sm font-medium text-muted-foreground">Active Power</label>
+                      <p className="text-xl font-bold">{currentReading.power?.toFixed(2)} kW</p>
+                    </div>
+                    <div className="border-l-4 border-green-500 pl-3">
+                      <label className="text-sm font-medium text-muted-foreground">Total Energy</label>
+                      <p className="text-xl font-bold">{currentReading.energy?.toFixed(1)} kWh</p>
+                    </div>
+                    <div className="border-l-4 border-yellow-500 pl-3">
+                      <label className="text-sm font-medium text-muted-foreground">Voltage</label>
+                      <p className="text-xl font-bold">{currentReading.voltage?.toFixed(1)} V</p>
+                    </div>
+                    <div className="border-l-4 border-purple-500 pl-3">
+                      <label className="text-sm font-medium text-muted-foreground">Current</label>
+                      <p className="text-xl font-bold">{currentReading.current?.toFixed(1)} A</p>
+                    </div>
+                    <div className="border-l-4 border-orange-500 pl-3">
+                      <label className="text-sm font-medium text-muted-foreground">Frequency</label>
+                      <p className="text-xl font-bold">{currentReading.frequency?.toFixed(2)} Hz</p>
+                    </div>
+                    {currentReading.powerFactor && (
+                      <div className="border-l-4 border-gray-400 pl-3">
+                        <label className="text-sm font-medium text-muted-foreground">Power Factor</label>
+                        <p className="text-xl font-bold">{currentReading.powerFactor?.toFixed(3)}</p>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
         </Tabs>
         </div>

@@ -26,6 +26,7 @@ export const devices = pgTable("devices", {
   location: text("location"),
   ipAddress: text("ip_address"),
   status: text("status").default("offline"), // 'online', 'offline', 'maintenance'
+  isBillingMeter: boolean("is_billing_meter").default(false), // true for main meters that should be used for cost calculation
   lastSeen: timestamp("last_seen"),
   config: jsonb("config"), // Store arbitrary config like thresholds
   createdAt: timestamp("created_at").defaultNow(),

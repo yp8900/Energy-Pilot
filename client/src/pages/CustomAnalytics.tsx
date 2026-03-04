@@ -91,10 +91,20 @@ export default function CustomAnalytics() {
               <div>
                 <p className="text-xs text-muted-foreground">Total Energy</p>
                 <p className="text-xl font-bold">{data.metadata.totalEnergy.toFixed(1)} <span className="text-sm font-normal">kWh</span></p>
+                {data.metadata.billingMetersUsedForCost !== undefined && (
+                  <p className="text-xs text-green-600 mt-0.5">
+                    From {data.metadata.billingMetersUsedForCost} billing meter(s)
+                  </p>
+                )}
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Total Cost</p>
                 <p className="text-xl font-bold">₹{data.metadata.totalCost.toFixed(0)}</p>
+                {data.metadata.billingMetersUsedForCost !== undefined && (
+                  <p className="text-xs text-green-600 mt-0.5">
+                    Main meters only
+                  </p>
+                )}
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Peak Power</p>
@@ -113,6 +123,14 @@ export default function CustomAnalytics() {
                 )}
               </div>
             </div>
+            {data.metadata.billingMetersUsedForCost !== undefined && data.metadata.billingMetersUsedForCost > 0 && (
+              <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md">
+                <p className="text-xs text-blue-700 dark:text-blue-400">
+                  💡 <strong>Cost Calculation:</strong> Energy cost is calculated only from {data.metadata.billingMetersUsedForCost} main billing meter(s) 
+                  to avoid double-counting sub-meter readings. Sub-meters are used for monitoring distribution only.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

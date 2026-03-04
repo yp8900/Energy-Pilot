@@ -11,8 +11,10 @@ import Alarms from "@/pages/Alarms";
 import AlarmThresholds from "@/pages/AlarmThresholds";
 import Analytics from "@/pages/Analytics";
 import CustomAnalytics from "@/pages/CustomAnalytics";
+import PredictiveAnalysis from "@/pages/PredictiveAnalysis";
 import BACnetDiscovery from "@/pages/BACnetDiscovery";
 import ModbusScanner from "@/pages/ModbusScanner";
+import ModbusEnergyDiscovery from "@/pages/ModbusEnergyDiscovery";
 import { BMSManagement } from "@/pages/BMSManagement";
 import { UserManagement } from "@/pages/UserManagement";
 import { Sidebar } from "@/components/Sidebar";
@@ -89,11 +91,17 @@ function Router() {
       <Route path="/custom-analytics">
         <ProtectedRoute component={CustomAnalytics} />
       </Route>
+      <Route path="/predictive-analysis">
+        <ProtectedRoute component={PredictiveAnalysis} />
+      </Route>
       <Route path="/bacnet-discovery">
         <ProtectedRoute component={BACnetDiscovery} allowedRoles={["admin"]} />
       </Route>
       <Route path="/modbus-scanner">
         <ProtectedRoute component={ModbusScanner} allowedRoles={["admin"]} />
+      </Route>
+      <Route path="/modbus-energy-discovery">
+        <ProtectedRoute component={ModbusEnergyDiscovery} allowedRoles={["admin"]} />
       </Route>
       <Route path="/alarms">
         <ProtectedRoute component={Alarms} />

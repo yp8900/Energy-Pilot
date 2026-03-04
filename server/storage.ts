@@ -90,16 +90,324 @@ export interface IStorage {
 
 // Mock storage for development mode (when no database is available)
 export class MockStorage implements IStorage {
-  private mockDevices: Device[] = [];
+  private mockDevices: Device[] = [
+    {
+      id: 1,
+      name: "EM-MAIN-INCOMER",
+      type: "Smart Meter",
+      location: "Main Electrical Room - Incomer",
+      ipAddress: "192.168.1.100",
+      status: "online",
+      isBillingMeter: true, // Main utility meter - used for cost calculation
+      lastSeen: new Date(),
+      config: null,
+      createdAt: new Date(),
+    },
+    {
+      id: 2,
+      name: "EM-HVAC-SYSTEM",
+      type: "Smart Meter",
+      location: "Mechanical Floor - HVAC",
+      ipAddress: "192.168.1.101",
+      status: "online",
+      isBillingMeter: false, // Sub-meter - monitoring only
+      lastSeen: new Date(),
+      config: null,
+      createdAt: new Date(),
+    },
+    {
+      id: 3,
+      name: "EM-LIGHTING-CIRCUIT",
+      type: "Smart Meter",
+      location: "Distribution Board - Lighting",
+      ipAddress: "192.168.1.102",
+      status: "online",
+      isBillingMeter: false, // Sub-meter - monitoring only
+      lastSeen: new Date(),
+      config: null,
+      createdAt: new Date(),
+    },
+    {
+      id: 4,
+      name: "EM-DATA-CENTER",
+      type: "Smart Meter",
+      location: "Server Room - UPS Output",
+      ipAddress: "192.168.1.103",
+      status: "online",
+      isBillingMeter: false, // Sub-meter - monitoring only
+      lastSeen: new Date(),
+      config: null,
+      createdAt: new Date(),
+    },
+    {
+      id: 5,
+      name: "EM-PRODUCTION-LINE",
+      type: "Smart Meter",
+      location: "Factory Floor - Production",
+      ipAddress: "192.168.1.104",
+      status: "online",
+      isBillingMeter: false, // Sub-meter - monitoring only
+      lastSeen: new Date(),
+      config: null,
+      createdAt: new Date(),
+    },
+  ];
   // Note: Real devices will be populated from BACnet discovery
 
   private mockReadings: Reading[] = [];
   // Note: Real readings will be collected from BACnet objects
 
+  constructor() {
+    // Generate 7 days of historical data for demo meters
+    this.mockReadings = this.initializeDemoHistoricalData();
+
+    // Initialize demo alerts
+    this.mockAlerts = [
+      {
+        id: 1,
+        deviceId: 1,
+        deviceName: "EM-MAIN-INCOMER",
+        severity: "warning",
+        message: "Power consumption approaching threshold (550 kW / 600 kW limit)",
+        timestamp: new Date(Date.now() - 5 * 60 * 1000), // 5 mins ago
+        acknowledged: false,
+        acknowledgedBy: null,
+        acknowledgedAt: null,
+      },
+      {
+        id: 2,
+        deviceId: 3,
+        deviceName: "EM-LIGHTING-CIRCUIT",
+        severity: "info",
+        message: "Load factor optimal at 87%",
+        timestamp: new Date(Date.now() - 15 * 60 * 1000), // 15 mins ago
+        acknowledged: false,
+        acknowledgedBy: null,
+        acknowledgedAt: null,
+      },
+    ];
+
+    // Initialize demo thresholds
+    this.mockThresholds = [
+      {
+        id: 1,
+        deviceId: 1,
+        deviceType: null,
+        parameter: "power",
+        operator: "greater_than",
+        value: 600,
+        unit: "kW",
+        severity: "high",
+        enabled: true,
+        message: "Main incomer power exceeded threshold",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: 2,
+        deviceId: null,
+        deviceType: "Smart Meter",
+        parameter: "voltage",
+        operator: "less_than",
+        value: 380,
+        unit: "V",
+        severity: "critical",
+        enabled: true,
+        message: "Low voltage detected",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: 3,
+        deviceId: null,
+        deviceType: "Smart Meter",
+        parameter: "power_factor",
+        operator: "less_than",
+        value: 0.85,
+        unit: "",
+        severity: "medium",
+        enabled: true,
+        message: "Poor power factor detected",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ];
+  }
+
+  // Generate realistic 7-day historical data for all demo meters during initialization
+  private initializeDemoHistoricalData(): Reading[] {
+    const readings: Reading[] = [];
+    const now = new Date();
+    let readingId = 1;
+
+    // Meter configurations with realistic patterns
+    const meterConfigs = [
+      {
+        deviceId: 1,
+        name: "EM-MAIN-INCOMER",
+        basePower: 550,
+        baseVoltage: 402,
+        baseCurrent: 790,
+        baseEnergy: 13200,
+        powerFactor: 0.92,
+        pattern: "office", // High during office hours, low at night
+      },
+      {
+        deviceId: 2,
+        name: "EM-HVAC-SYSTEM",
+        basePower: 200,
+        baseVoltage: 400,
+        baseCurrent: 288,
+        baseEnergy: 4800,
+        powerFactor: 0.89,
+        pattern: "hvac", // Temperature-dependent, peaks midday
+      },
+      {
+        deviceId: 3,
+        name: "EM-LIGHTING-CIRCUIT",
+        basePower: 70,
+        baseVoltage: 398,
+        baseCurrent: 107,
+        baseEnergy: 1680,
+        powerFactor: 0.95,
+        pattern: "lighting", // High during work hours, very low at night
+      },
+      {
+        deviceId: 4,
+        name: "EM-DATA-CENTER",
+        basePower: 195,
+        baseVoltage: 401,
+        baseCurrent: 280,
+        baseEnergy: 4680,
+        powerFactor: 0.90,
+        pattern: "247", // Constant 24/7 load with small variations
+      },
+      {
+        deviceId: 5,
+        name: "EM-PRODUCTION-LINE",
+        basePower: 365,
+        baseVoltage: 403,
+        baseCurrent: 521,
+        baseEnergy: 8760,
+        powerFactor: 0.91,
+        pattern: "production", // Shift-based, weekday operation
+      },
+    ];
+
+    // Generate readings for past 7 days (every 15 minutes = 672 readings per meter)
+    const intervalsPerDay = 96; // 24 hours * 4 (every 15 min)
+    const totalDays = 7;
+
+    for (const config of meterConfigs) {
+      let cumulativeEnergy = config.baseEnergy - (config.basePower * 24 * totalDays);
+
+      for (let day = totalDays; day >= 0; day--) {
+        for (let interval = 0; interval < intervalsPerDay; interval++) {
+          const minutesAgo = (day * 24 * 60) + (interval * 15);
+          const timestamp = new Date(now.getTime() - (minutesAgo * 60 * 1000));
+          const hour = timestamp.getHours();
+          const dayOfWeek = timestamp.getDay(); // 0=Sunday, 6=Saturday
+          const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+          // Calculate power based on pattern
+          let powerMultiplier = 1.0;
+          
+          switch (config.pattern) {
+            case "office":
+              if (hour >= 8 && hour <= 18) {
+                powerMultiplier = 0.85 + (Math.random() * 0.15); // 85-100%
+              } else if (hour >= 19 && hour <= 22) {
+                powerMultiplier = 0.45 + (Math.random() * 0.10); // 45-55%
+              } else {
+                powerMultiplier = 0.30 + (Math.random() * 0.10); // 30-40%
+              }
+              if (isWeekend) powerMultiplier *= 0.20; // 20% on weekends
+              break;
+
+            case "hvac":
+              if (hour >= 10 && hour <= 16) {
+                powerMultiplier = 0.90 + (Math.random() * 0.10); // 90-100% peak cooling
+              } else if (hour >= 7 && hour <= 20) {
+                powerMultiplier = 0.65 + (Math.random() * 0.15); // 65-80%
+              } else {
+                powerMultiplier = 0.25 + (Math.random() * 0.10); // 25-35% night setback
+              }
+              if (isWeekend) powerMultiplier *= 0.60; // 60% on weekends
+              break;
+
+            case "lighting":
+              if (hour >= 8 && hour <= 19) {
+                powerMultiplier = 0.80 + (Math.random() * 0.20); // 80-100%
+              } else if (hour >= 20 && hour <= 22) {
+                powerMultiplier = 0.30 + (Math.random() * 0.10); // 30-40%
+              } else {
+                powerMultiplier = 0.10 + (Math.random() * 0.05); // 10-15% emergency lighting
+              }
+              if (isWeekend) powerMultiplier *= 0.15; // 15% on weekends
+              break;
+
+            case "247":
+              // Constant load with minor fluctuations
+              powerMultiplier = 0.85 + (Math.random() * 0.15); // 85-100% always
+              break;
+
+            case "production":
+              if (!isWeekend) {
+                if (hour >= 6 && hour <= 22) {
+                  powerMultiplier = 0.80 + (Math.random() * 0.20); // 80-100% during shifts
+                } else {
+                  powerMultiplier = 0.25 + (Math.random() * 0.10); // 25-35% cleanup/standby
+                }
+              } else {
+                powerMultiplier = 0.20 + (Math.random() * 0.05); // 20-25% weekend maintenance
+              }
+              break;
+          }
+
+          const power = config.basePower * powerMultiplier;
+          const voltage = config.baseVoltage * (0.98 + Math.random() * 0.04); // ±2%
+          const current = config.baseCurrent * powerMultiplier;
+          const powerFactor = config.powerFactor * (0.97 + Math.random() * 0.03);
+          
+          // Calculate energy increment (kWh = kW * hours)
+          const energyIncrement = power * (15 / 60); // 15 minutes in hours
+          cumulativeEnergy += energyIncrement;
+
+          readings.push({
+            id: readingId++,
+            deviceId: config.deviceId,
+            power: Math.round(power * 10) / 10,
+            voltage: Math.round(voltage * 10) / 10,
+            voltageL1L2: Math.round((voltage - 1 + Math.random() * 2) * 10) / 10,
+            voltageL2L3: Math.round((voltage + Math.random() * 2) * 10) / 10,
+            voltageL3L1: Math.round((voltage - 0.5 + Math.random() * 1) * 10) / 10,
+            current: Math.round(current * 10) / 10,
+            currentL1: Math.round((current - 2 + Math.random() * 4) * 10) / 10,
+            currentL2: Math.round((current + Math.random() * 4) * 10) / 10,
+            currentL3: Math.round((current - 1 + Math.random() * 2) * 10) / 10,
+            energy: Math.round(cumulativeEnergy * 10) / 10,
+            frequency: 50.0 + (Math.random() * 0.2 - 0.1), // 49.9-50.1 Hz
+            powerFactor: Math.round(powerFactor * 100) / 100,
+            timestamp,
+          });
+        }
+      }
+    }
+
+    console.log(`📊 Generated ${readings.length} historical readings across ${meterConfigs.length} meters (7 days)`);
+    return readings.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  }
+
   // Generate real-time readings for meters
   private generateRealtimeReading(deviceId: number): Reading {
     const device = this.mockDevices.find(d => d.id === deviceId);
-    const baseReading = this.mockReadings.find(r => r.deviceId === deviceId);
+    
+    // Get the most recent reading for this device from historical data
+    const recentReadings = this.mockReadings
+      .filter(r => r.deviceId === deviceId)
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    
+    const baseReading = recentReadings[0];
     
     // If device is offline, return zero readings
     if (device && device.status === 'offline') {
@@ -107,48 +415,77 @@ export class MockStorage implements IStorage {
         id: Date.now(),
         deviceId,
         power: 0,
-        energy: 0,
+        energy: baseReading?.energy || 0,
         voltage: 0,
+        voltageL1L2: 0,
+        voltageL2L3: 0,
+        voltageL3L1: 0,
         current: 0,
+        currentL1: 0,
+        currentL2: 0,
+        currentL3: 0,
         frequency: 50,
         powerFactor: 1,
         timestamp: new Date()
       };
     }
     
-    // If no base reading exists, create realistic defaults based on device type
+    // If no base reading exists (shouldn't happen with historical data), return defaults
     if (!baseReading) {
-      let defaultPower = 0;
-      if (device?.type === 'smart_meter') {
-        defaultPower = 50 + Math.random() * 100; // 50-150 kW for smart meters
-      } else if (device?.type === 'plc') {
-        defaultPower = 30 + Math.random() * 60; // 30-90 kW for PLCs
-      } else if (device?.type === 'sensor') {
-        defaultPower = 0.1 + Math.random() * 0.5; // 0.1-0.6 kW for sensors
-      }
-      
+      const defaultPower = 100;
       return {
         id: Date.now(),
         deviceId,
         power: defaultPower,
-        energy: defaultPower * 24, // Simulate daily energy
-        voltage: 230 + Math.random() * 10, // 230-240V
-        current: defaultPower / 230 * (1 + Math.random() * 0.1), // Calculate current with variation
-        frequency: 50 + (Math.random() - 0.5) * 0.2, // 49.9-50.1Hz
-        powerFactor: 0.85 + Math.random() * 0.15, // 0.85-1.0
+        energy: defaultPower * 24,
+        voltage: 400,
+        voltageL1L2: 400,
+        voltageL2L3: 400,
+        voltageL3L1: 400,
+        current: 145,
+        currentL1: 145,
+        currentL2: 145,
+        currentL3: 145,
+        frequency: 50.0,
+        powerFactor: 0.90,
         timestamp: new Date()
       };
     }
 
-    // Add realistic variations
-    const powerVariation = (Math.random() - 0.5) * 0.1; // ±5% variation
-    const voltageVariation = (Math.random() - 0.5) * 0.02; // ±1% variation
-    const currentVariation = (Math.random() - 0.5) * 0.08; // ±4% variation
-    const frequencyVariation = (Math.random() - 0.5) * 0.002; // ±0.1Hz
-    const pfVariation = (Math.random() - 0.5) * 0.02; // ±1% variation
-
+    // Add realistic variations based on time of day
     const now = new Date();
-    const currentPower = Math.max(0, baseReading.power! * (1 + powerVariation));
+    const hour = now.getHours();
+    
+    // Adjust power variation based on device pattern and time
+    let powerMultiplier = 1.0;
+    const deviceName = device?.name || "";
+    
+    if (deviceName.includes("INCOMER") || deviceName.includes("MAIN")) {
+      // Main incomer follows office pattern
+      powerMultiplier = hour >= 8 && hour <= 18 ? 0.95 + Math.random() * 0.10 : 0.40 + Math.random() * 0.15;
+    } else if (deviceName.includes("HVAC")) {
+      // HVAC peaks midday
+      powerMultiplier = hour >= 10 && hour <= 16 ? 0.90 + Math.random() * 0.10 : 0.50 + Math.random() * 0.20;
+    } else if (deviceName.includes("LIGHTING")) {
+      // Lighting high during day
+      powerMultiplier = hour >= 8 && hour <= 19 ? 0.85 + Math.random() * 0.15 : 0.15 + Math.random() * 0.05;
+    } else if (deviceName.includes("DATA")) {
+      // Data center constant
+      powerMultiplier = 0.90 + Math.random() * 0.10;
+    } else if (deviceName.includes("PRODUCTION")) {
+      // Production shift-based
+      powerMultiplier = hour >= 6 && hour <= 22 ? 0.85 + Math.random() * 0.15 : 0.30 + Math.random() * 0.10;
+    } else {
+      powerMultiplier = 0.95 + Math.random() * 0.10;
+    }
+
+    const powerVariation = (Math.random() - 0.5) * 0.05; // ±2.5% micro-variation
+    const voltageVariation = (Math.random() - 0.5) * 0.01; // ±0.5% variation
+    const currentVariation = (Math.random() - 0.5) * 0.04; // ±2% variation
+    const frequencyVariation = (Math.random() - 0.5) * 0.001; // ±0.05Hz
+    const pfVariation = (Math.random() - 0.5) * 0.01; // ±0.5% variation
+
+    const currentPower = Math.max(0, baseReading.power! * powerMultiplier * (1 + powerVariation));
     
     // Update cumulative energy properly
     this.updateCumulativeEnergy(deviceId, currentPower, now);
@@ -157,12 +494,18 @@ export class MockStorage implements IStorage {
     const reading: Reading = {
       id: Date.now() + Math.random(),
       deviceId,
-      power: currentPower,
-      energy: deviceEnergy?.energy || 0, // Use cumulative energy
-      voltage: baseReading.voltage! * (1 + voltageVariation),
-      current: baseReading.current! * (1 + currentVariation),
-      frequency: (baseReading.frequency || 50) * (1 + frequencyVariation),
-      powerFactor: Math.max(0.1, Math.min(1, (baseReading.powerFactor || 0.9) * (1 + pfVariation))),
+      power: Math.round(currentPower * 10) / 10,
+      energy: Math.round((deviceEnergy?.energy || baseReading.energy || 0) * 10) / 10,
+      voltage: Math.round((baseReading.voltage! * (1 + voltageVariation)) * 10) / 10,
+      voltageL1L2: Math.round((baseReading.voltageL1L2! * (1 + voltageVariation)) * 10) / 10,
+      voltageL2L3: Math.round((baseReading.voltageL2L3! * (1 + voltageVariation)) * 10) / 10,
+      voltageL3L1: Math.round((baseReading.voltageL3L1! * (1 + voltageVariation)) * 10) / 10,
+      current: Math.round((currentPower / (baseReading.voltage! / (baseReading.power! / baseReading.current!))) * 10) / 10,
+      currentL1: Math.round((baseReading.currentL1! * powerMultiplier * (1 + currentVariation)) * 10) / 10,
+      currentL2: Math.round((baseReading.currentL2! * powerMultiplier * (1 + currentVariation)) * 10) / 10,
+      currentL3: Math.round((baseReading.currentL3! * powerMultiplier * (1 + currentVariation)) * 10) / 10,
+      frequency: Math.round((50.0 + frequencyVariation) * 100) / 100,
+      powerFactor: Math.round(Math.max(0.1, Math.min(1, (baseReading.powerFactor || 0.9) * (1 + pfVariation))) * 100) / 100,
       timestamp: now
     };
     

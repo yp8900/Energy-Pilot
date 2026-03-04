@@ -4,17 +4,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Eye, Zap, Activity, Gauge } from "lucide-react";
+import { Eye, Zap, Activity, Gauge, Download, RefreshCw } from "lucide-react";
 import { type Device, type Reading, type BacnetObjectMapping } from "@shared/schema";
-import { useQuery, useQueries } from "@tanstack/react-query";
+import { useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import { MeterDetailDialog } from "@/components/MeterDetailDialog";
+import { useToast } from "@/hooks/use-toast";
 
 export function Meters() {
   const [selectedMeter, setSelectedMeter] = useState<Device | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   // Fetch all meters
-  const { data: meters = [], isLoading: loadingMeters } = useQuery({
+  const { data: meters = [], isLoading: loadingMeters, refetch: refetchMeters } = useQuery({
     queryKey: ["/api/meters"],
     queryFn: async () => {
       const res = await fetch("/api/meters");
@@ -93,6 +97,48 @@ export function Meters() {
     setDialogOpen(true);
   };
 
+  const handleImportReadings = async () => {
+    if (meters.length === 0) {
+      toast({
+        title: "No Meters Found",
+        description: "Please add energy meters from Energy Meters discovery page first",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      setImporting(true);
+      const response = await fetch('/api/modbus/import-readings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to import readings');
+      }
+
+      const result = await response.json();
+      
+      toast({
+        title: "Readings Imported",
+        description: `Imported ${result.readingCount} readings for ${result.deviceCount} meters`,
+      });
+
+      // Refresh meters and all reading queries
+      await queryClient.invalidateQueries({ queryKey: ["/api/meters"] });
+    } catch (error: any) {
+      toast({
+        title: "Import Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
+
   if (loadingMeters) {
     return (
       <div className="container mx-auto p-6">
@@ -111,6 +157,20 @@ export function Meters() {
           <p className="text-muted-foreground">
             Monitor electrical parameters across {meters.length} connected meters
           </p>
+        </div>
+        <div className="flex gap-2">
+          <Button 
+            onClick={handleImportReadings} 
+            disabled={importing || meters.length === 0}
+            variant="outline"
+          >
+            {importing ? (
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
+            Import Readings
+          </Button>
         </div>
       </div>
 
@@ -147,7 +207,14 @@ export function Meters() {
                   <CardHeader className="pb-2">
                     <div className="flex justify-between items-start">
                       <div>
-                        <CardTitle className="text-lg">{meter.name}</CardTitle>
+                        <div className="flex items-center gap-2">
+                          <CardTitle className="text-lg">{meter.name}</CardTitle>
+                          {meter.isBillingMeter && (
+                            <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded border border-green-300 dark:border-green-700">
+                              💰 BILLING
+                            </span>
+                          )}
+                        </div>
                         <CardDescription>
                           {meter.location} • {meter.type.replace('_', ' ')}
                         </CardDescription>
@@ -315,7 +382,16 @@ export function Meters() {
 
                     return (
                       <TableRow key={meter.id}>
-                        <TableCell className="font-medium">{meter.name}</TableCell>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-2">
+                            {meter.name}
+                            {meter.isBillingMeter && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded border border-green-300 dark:border-green-700">
+                                💰
+                              </span>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell>{meter.location}</TableCell>
                         <TableCell>
                           <Badge className={getStatusBadge(meter.status)}>

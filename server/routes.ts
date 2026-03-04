@@ -4,6 +4,9 @@ import { setupAuth } from "./replit_integrations/auth";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
+import { readFileSync, writeFileSync, existsSync } from "fs";
+import { join } from "path";
+import { parse } from "csv-parse/sync";
 
 // Import Auth routes registration
 import { registerAuthRoutes } from "./replit_integrations/auth";
@@ -202,8 +205,19 @@ export async function registerRoutes(
   // --- Meters ---
   app.get("/api/meters", async (req, res) => {
     try {
-      const meters = await storage.getMeters();
-      res.json(meters);
+      // Get energy meters from database
+      const { db } = await import('./db');
+      const { devices } = await import('@shared/schema');
+      
+      if (db) {
+        const { eq } = await import('drizzle-orm');
+        const energyMeters = await db.select().from(devices).where(eq(devices.type, 'energy_meter'));
+        res.json(energyMeters);
+      } else {
+        // Fallback to storage if DB not available
+        const meters = await storage.getMeters();
+        res.json(meters);
+      }
     } catch (error) {
       console.error('Failed to get meters:', error);
       res.status(500).json({ message: "Failed to fetch meters" });
@@ -212,8 +226,23 @@ export async function registerRoutes(
 
   app.get("/api/meters/:id/reading", async (req, res) => {
     try {
-      const reading = await storage.getMeterReading(Number(req.params.id));
-      res.json(reading);
+      // Get latest reading from database
+      const { db } = await import('./db');
+      const { readings } = await import('@shared/schema');
+      
+      if (db) {
+        const { eq, desc } = await import('drizzle-orm');
+        const latestReading = await db.select()
+          .from(readings)
+          .where(eq(readings.deviceId, Number(req.params.id)))
+          .orderBy(desc(readings.timestamp))
+          .limit(1);
+        
+        res.json(latestReading[0] || null);
+      } else {
+        const reading = await storage.getMeterReading(Number(req.params.id));
+        res.json(reading);
+      }
     } catch (error) {
       console.error('Failed to get meter reading:', error);
       res.status(500).json({ message: "Failed to fetch meter reading" });
@@ -223,8 +252,27 @@ export async function registerRoutes(
   app.get("/api/meters/:id/readings", async (req, res) => {
     try {
       const hours = req.query.hours ? Number(req.query.hours) : 24;
-      const readings = await storage.getMeterReadings(Number(req.params.id), hours);
-      res.json(readings);
+      
+      // Get readings from database
+      const { db } = await import('./db');
+      const { readings } = await import('@shared/schema');
+      
+      if (db) {
+        const { eq, gte, and } = await import('drizzle-orm');
+        const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+        
+        const deviceReadings = await db.select()
+          .from(readings)
+          .where(and(
+            eq(readings.deviceId, Number(req.params.id)),
+            gte(readings.timestamp, since)
+          ));
+        
+        res.json(deviceReadings);
+      } else {
+        const deviceReadings = await storage.getMeterReadings(Number(req.params.id), hours);
+        res.json(deviceReadings);
+      }
     } catch (error) {
       console.error('Failed to get meter readings:', error);
       res.status(500).json({ message: "Failed to fetch meter readings" });
@@ -1445,6 +1493,322 @@ export async function registerRoutes(
     }
   });
 
+  /**
+   * POST /api/modbus/save-selected-meters
+   * Save selected energy meters from discovery to database
+   */
+  app.post("/api/modbus/save-selected-meters", async (req, res) => {
+    try {
+      const { meters } = req.body;
+
+      if (!Array.isArray(meters) || meters.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "meters array is required"
+        });
+      }
+
+      console.log(`[Modbus Save] Saving ${meters.length} selected energy meters...`);
+
+      // Use db and schema
+      const { db } = await import('./db');
+      const { devices } = await import('@shared/schema');
+
+      if (!db) {
+        return res.status(500).json({
+          success: false,
+          message: "Database not connected"
+        });
+      }
+
+      // Parameter mapping
+      const PARAMETER_MAP: Record<string, string> = {
+        "WH": "energy",
+        "MAIN_WH": "energy",
+        "Run _W": "power", 
+        "Run_W": "power",
+        "MAIN_Run _W": "power",
+        "MAIN_Run_W": "power",
+        "W": "power",
+        "Total_Amp": "current",
+        "TAmp": "current",
+        "MAIN_TAmp": "current",
+        "Am": "current",
+        "VLL": "voltage",
+        "VLN": "voltage",
+        "V": "voltage"
+      };
+
+      // Helper function to get location from meter name
+      function getMeterLocation(meterName: string): string {
+        const parts = meterName.split("/");
+        if (parts.length >= 2) {
+          const location = parts[1]
+            .replace(/_/g, " ")
+            .replace(/([A-Z])/g, " $1")
+            .trim();
+          return location.charAt(0).toUpperCase() + location.slice(1);
+        }
+        return meterName;
+      }
+
+      // Create devices only (readings imported separately)
+      const createdDevices: any[] = [];
+      
+      for (const meter of meters) {
+        const hasEnergyParams = meter.parameters.some((p: any) => PARAMETER_MAP[p.name]);
+        
+        if (!hasEnergyParams) {
+          continue;
+        }
+
+        const location = getMeterLocation(meter.name);
+        
+        createdDevices.push({
+          name: meter.name.replace(/\//g, " - "),
+          type: "energy_meter",
+          location: location,
+          ipAddress: "Modbus RS485",
+          status: "active"
+        });
+      }
+
+      console.log(`[Modbus Save] Creating ${createdDevices.length} devices...`);
+      const insertedDevices = await db.insert(devices).values(createdDevices).returning();
+      
+      for (const device of insertedDevices) {
+        console.log(`[Modbus Save] Created device: ${device.name} (ID: ${device.id})`);
+      }
+
+      console.log(`[Modbus Save] ✅ Saved ${insertedDevices.length} devices`);
+
+      res.json({
+        success: true,
+        deviceCount: insertedDevices.length,
+        readingCount: 0,  // Readings imported separately
+        message: `Successfully saved ${insertedDevices.length} energy meters. Click "Import Readings" on Meters page to load historical data.`
+      });
+
+    } catch (error: any) {
+      console.error('[Modbus Save] Error:', error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to save meters",
+        error: error.message
+      });
+    }
+  });
+
+  /**
+   * POST /api/modbus/import-readings
+   * Import readings for all energy meters from CSV
+   */
+  app.post("/api/modbus/import-readings", async (req, res) => {
+    try {
+      console.log(`[Modbus Import] Starting readings import...`);
+
+      const { db } = await import('./db');
+      const { devices, readings } = await import('@shared/schema');
+      const { eq } = await import('drizzle-orm');
+
+      if (!db) {
+        return res.status(500).json({
+          success: false,
+          message: "Database not connected"
+        });
+      }
+
+      // Get all energy meters
+      const energyMeters = await db.select().from(devices).where(eq(devices.type, 'energy_meter'));
+      
+      if (energyMeters.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "No energy meters found. Add meters from Energy Meters discovery page first."
+        });
+      }
+
+      console.log(`[Modbus Import] Found ${energyMeters.length} energy meters in database`);
+
+      // Load discovery file to get LogId mappings
+      const discoveryPath = join(process.cwd(), 'client', 'public', 'discovered-energy-meters.json');
+      const discoveryData = JSON.parse(readFileSync(discoveryPath, 'utf-8'));
+
+      // Parameter mapping
+      const PARAMETER_MAP: Record<string, string> = {
+        "WH": "energy",
+        "MAIN_WH": "energy",
+        "Run _W": "power",
+        "Run_W": "power",
+        "MAIN_Run _W": "power",
+        "W": "power",
+        "Total_Amp": "current",
+        "TAmp": "current",
+        "MAIN_TAmp": "current",
+        "Am": "current",
+        "VLL": "voltage",
+        "VLN": "voltage",
+        "V": "voltage"
+      };
+
+      // Create LogId to meter mapping
+      const logIdMap = new Map<string, { meterName: string; fieldName: string }>();
+      const deviceNameMap = new Map<string, number>();
+
+      for (const meter of energyMeters) {
+        // Convert device name back to original format (e.g., "EM - MAIN" -> "EM/MAIN")
+        const originalName = meter.name.replace(/ - /g, "/");
+        deviceNameMap.set(originalName, meter.id);
+      }
+
+      for (const discoveredMeter of discoveryData) {
+        for (const param of discoveredMeter.parameters) {
+          const fieldName = PARAMETER_MAP[param.name];
+          if (fieldName) {
+            logIdMap.set(param.logId, {
+              meterName: discoveredMeter.name,
+              fieldName: fieldName
+            });
+          }
+        }
+      }
+
+      console.log(`[Modbus Import] Mapped ${logIdMap.size} parameters`);
+
+      // Load trend log data
+      const trendLogPath = join(process.cwd(), 'exported-data', 'trendlog_readings.csv');
+      const csvContent = readFileSync(trendLogPath, 'utf-8');
+      const trendLogRecords = parse(csvContent, {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true
+      });
+
+      console.log(`[Modbus Import] Loaded ${trendLogRecords.length} records from CSV`);
+
+      // Filter and group readings
+      const readingGroups = new Map<string, any>();
+      let matchedRecords = 0;
+
+      for (const record of trendLogRecords) {
+        const mapping = logIdMap.get(record.LogId);
+        if (!mapping) continue;
+
+        const deviceId = deviceNameMap.get(mapping.meterName);
+        if (!deviceId) continue;
+
+        matchedRecords++;
+        const timestamp = new Date(parseInt(record.Timestamp) * 1000);
+        const key = `${deviceId}-${record.Timestamp}`;
+
+        if (!readingGroups.has(key)) {
+          readingGroups.set(key, {
+            deviceId,
+            timestamp,
+            power: null,
+            voltage: null,
+            current: null,
+            energy: null,
+            frequency: null,
+            powerFactor: null
+          });
+        }
+
+        const reading = readingGroups.get(key)!;
+        const value = parseFloat(record.Value);
+        if (!isNaN(value)) {
+          reading[mapping.fieldName] = value;
+        }
+      }
+
+      console.log(`[Modbus Import] Matched ${matchedRecords} records, consolidated to ${readingGroups.size} readings`);
+
+      // Insert readings in batches
+      const readingsArray = Array.from(readingGroups.values());
+      const BATCH_SIZE = 500;
+      let insertedCount = 0;
+
+      for (let i = 0; i < readingsArray.length; i += BATCH_SIZE) {
+        const batch = readingsArray.slice(i, i + BATCH_SIZE);
+        await db.insert(readings).values(batch);
+        insertedCount += batch.length;
+      }
+
+      console.log(`[Modbus Import] ✅ Imported ${insertedCount} readings for ${energyMeters.length} meters`);
+
+      res.json({
+        success: true,
+        deviceCount: energyMeters.length,
+        readingCount: insertedCount,
+        message: `Imported ${insertedCount} readings for ${energyMeters.length} energy meters`
+      });
+
+    } catch (error: any) {
+      console.error('[Modbus Import] Error:', error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to import readings",
+        error: error.message
+      });
+    }
+  });
+
+  /**
+   * POST /api/modbus/delete-discovered-meters
+   * Delete meters from the discovered-energy-meters.json file
+   */
+  app.post("/api/modbus/delete-discovered-meters", async (req, res) => {
+    try {
+      const { meterNames } = req.body;
+
+      if (!Array.isArray(meterNames) || meterNames.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "meterNames array is required"
+        });
+      }
+
+      console.log(`[Modbus Delete] Deleting ${meterNames.length} meters from discovery file...`);
+
+      const discoveryPath = join(process.cwd(), 'client', 'public', 'discovered-energy-meters.json');
+      
+      // Check if file exists
+      if (!existsSync(discoveryPath)) {
+        return res.status(404).json({
+          success: false,
+          message: "Discovery file not found"
+        });
+      }
+
+      // Read current discovery data
+      const currentData = JSON.parse(readFileSync(discoveryPath, 'utf-8'));
+      
+      // Filter out the selected meters
+      const filteredData = currentData.filter((meter: any) => !meterNames.includes(meter.name));
+      const deletedCount = currentData.length - filteredData.length;
+
+      // Write back the filtered data
+      writeFileSync(discoveryPath, JSON.stringify(filteredData, null, 2));
+
+      console.log(`[Modbus Delete] ✅ Deleted ${deletedCount} meters. ${filteredData.length} remaining.`);
+
+      res.json({
+        success: true,
+        deletedCount: deletedCount,
+        remainingCount: filteredData.length,
+        message: `Successfully deleted ${deletedCount} meters from discovery list`
+      });
+
+    } catch (error: any) {
+      console.error('[Modbus Delete] Error:', error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to delete meters",
+        error: error.message
+      });
+    }
+  });
+
   // --- Analytics ---
   app.get(api.analytics.overview.path, async (req, res) => {
     const overview = await storage.getAnalyticsOverview();
@@ -1464,6 +1828,9 @@ export async function registerRoutes(
       // Get all online devices
       const devices = await storage.getDevices();
       const onlineDevices = devices.filter(d => d.status === 'online');
+      
+      // IMPORTANT: Only use billing meters for energy/cost to avoid double-counting sub-meters
+      const billingMeters = onlineDevices.filter(d => d.isBillingMeter === true);
       
       let totalConsumption = 0;
       let totalCost = 0;
@@ -1491,11 +1858,12 @@ export async function registerRoutes(
           periodHours = 24; // Default to daily
       }
       
-      // Calculate consumption for each online device using daily aggregation approach
+      // Calculate consumption ONLY from billing meters (to avoid double-counting sub-meters)
       let devicesWithData = 0;
       let devicesWithoutData = 0;
+      let billingMetersUsed = 0;
       
-      for (const device of onlineDevices) {
+      for (const device of billingMeters) {
         const readings = await storage.getMeterReadings(device.id, Math.ceil(periodHours));
         
         if (readings.length === 0) {
@@ -1512,6 +1880,7 @@ export async function registerRoutes(
         }
         
         devicesWithData++;
+        billingMetersUsed++;
         
         // Group readings by date and calculate daily consumption (max - min per day)
         const dailyData: Record<string, { minEnergy: number | null; maxEnergy: number | null }> = {};
@@ -1596,6 +1965,8 @@ export async function registerRoutes(
         onlineDevices: onlineDevices.length,
         devicesWithData,
         devicesWithoutData,
+        billingMetersCount: billingMeters.length,
+        billingMetersUsed,
         timestamp: now,
         trend: trendValue !== null ? { value: trendValue, isPositive: trendIsPositive } : null
       });
@@ -1671,6 +2042,10 @@ export async function registerRoutes(
     try {
       const devices = await storage.getDevices();
       const onlineDevices = devices.filter(d => d.status === 'online');
+      
+      // IMPORTANT: Only use billing meters for cost calculations
+      const billingMeters = devices.filter(d => d.isBillingMeter === true);
+      
       const now = new Date();
       const tariffRate = 8; // ₹8 per kWh
       
@@ -1699,12 +2074,13 @@ export async function registerRoutes(
       
       if (minDevicePower === Number.MAX_VALUE) minDevicePower = 0;
       
-      // Calculate projected monthly cost from ACTUAL historical consumption
+      // Calculate projected monthly cost from billing meters ONLY (to avoid double-counting)
       let totalDailyConsumption = 0;
       let daysWithData = 0;
+      let billingMetersUsed = 0;
       
-      // Get historical data for past 30 days to calculate average
-      for (const device of devices) {
+      // Get historical data for past 30 days to calculate average (billing meters only)
+      for (const device of billingMeters) {
         const readings = await storage.getMeterReadings(device.id, 30 * 24); // Past 30 days
         
         if (readings.length === 0) continue;
@@ -1733,7 +2109,8 @@ export async function registerRoutes(
           return acc;
         }, {});
         
-        // Sum daily consumption for this device
+        // Sum daily consumption for this billing meter
+        billingMetersUsed++;
         Object.values(dailyData).forEach((day: any) => {
           const dailyConsumption = (day.maxEnergy || 0) - (day.minEnergy || 0);
           if (dailyConsumption > 0) {
@@ -1769,6 +2146,8 @@ export async function registerRoutes(
         avgPowerPerDevice: devicesWithCurrentData > 0 ? (totalCurrentPower / devicesWithCurrentData).toFixed(1) : '0',
         onlineDevices: onlineDevices.length,
         devicesWithCurrentData,
+        billingMetersCount: billingMeters.length,
+        billingMetersUsed,
         timestamp: now
       });
     } catch (error) {
@@ -1780,8 +2159,9 @@ export async function registerRoutes(
     try {
       const { timeRange } = req.query;
       
-      // Get all devices with readings
+      // IMPORTANT: Only use billing meters for consumption/cost data (avoid double-counting sub-meters)
       const devices = await storage.getDevices();
+      const billingMeters = devices.filter(d => d.isBillingMeter === true);
       const consumptionData = [];
       
       // Calculate date range based on timeRange
@@ -1802,8 +2182,8 @@ export async function registerRoutes(
           startDate.setDate(now.getDate() - 7); // Default 7 days
       }
       
-      // Fetch readings for each device
-      for (const device of devices) {
+      // Fetch readings for billing meters only
+      for (const device of billingMeters) {
         const readings = await storage.getMeterReadings(device.id);
         
         // Filter readings within time range and group by date
@@ -1873,28 +2253,79 @@ export async function registerRoutes(
         return res.json([]);
       }
 
-      // Get specific device
       const deviceIdNum = parseInt(deviceId as string);
+      
+      // Try database first
+      const { db } = await import('./db');
+      const { devices, readings } = await import('@shared/schema');
+      
+      if (db) {
+        const { eq, gte, and } = await import('drizzle-orm');
+        
+        // Get device from database
+        const device = await db.select().from(devices).where(eq(devices.id, deviceIdNum)).limit(1);
+        
+        if (device.length === 0) {
+          return res.status(404).json({ message: 'Device not found' });
+        }
+        
+        // Get historical readings from database
+        const since = new Date(Date.now() - hoursNum * 60 * 60 * 1000);
+        const deviceReadings = await db.select()
+          .from(readings)
+          .where(and(
+            eq(readings.deviceId, deviceIdNum),
+            gte(readings.timestamp, since)
+          ))
+          .orderBy(readings.timestamp);
+        
+        console.log(`📋 Found ${deviceReadings.length} historical readings for device ${device[0].name}`);
+        
+        // Build voltage data from historical readings
+        const voltageData = deviceReadings
+          .filter((r: any) => r.voltageL1L2 || r.voltageL2L3 || r.voltageL3L1)
+          .map((r: any) => {
+            const date = new Date(r.timestamp);
+            return {
+              time: date.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', hour12: false }),
+              fullTime: date.toLocaleString('en', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }),
+              phase1: r.voltageL1L2 || 0,
+              phase2: r.voltageL2L3 || 0,
+              phase3: r.voltageL3L1 || 0,
+              timestamp: r.timestamp
+            };
+          });
+        
+        if (voltageData.length === 0) {
+          console.log('⚠️ No phase voltage data in database yet.');
+          return res.json([]);
+        }
+        
+        console.log(`✅ Returning ${voltageData.length} voltage data points from database`);
+        if (voltageData.length > 0) {
+          console.log(`   Sample: phase1=${voltageData[0].phase1}V, phase2=${voltageData[0].phase2}V, phase3=${voltageData[0].phase3}V`);
+        }
+        
+        return res.json(voltageData);
+      }
+      
+      // Fallback to mock storage
       const device = await storage.getDevice(deviceIdNum);
       
       if (!device) {
         return res.status(404).json({ message: 'Device not found' });
       }
       
-      // Get historical readings with stored phase voltages FIRST
-      const readings = await storage.getMeterReadings(deviceIdNum);
+      const meterReadings = await storage.getMeterReadings(deviceIdNum);
       const now = new Date();
       const startDate = new Date(now.getTime() - hoursNum * 60 * 60 * 1000);
       
-      const filteredReadings = readings
+      const filteredReadings = meterReadings
         .filter((r: any) => new Date(r.timestamp) >= startDate)
         .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       
-      console.log(`📋 Found ${filteredReadings.length} historical readings for device ${device.name}`);
-      
-      // Build voltage data from historical readings
       const voltageData = filteredReadings
-        .filter((r: any) => r.voltageL1L2 || r.voltageL2L3 || r.voltageL3L1) // Only include readings with phase voltage data
+        .filter((r: any) => r.voltageL1L2 || r.voltageL2L3 || r.voltageL3L1)
         .map((r: any) => {
           const date = new Date(r.timestamp);
           return {
@@ -1906,16 +2337,6 @@ export async function registerRoutes(
             timestamp: r.timestamp
           };
         });
-      
-      if (voltageData.length === 0) {
-        console.log('⚠️ No phase voltage data in historical readings yet. Wait for data collector to run.');
-        return res.json([]);
-      }
-      
-      console.log(`✅ Returning ${voltageData.length} voltage data points`);
-      if (voltageData.length > 0) {
-        console.log(`   Sample: phase1=${voltageData[0].phase1}V, phase2=${voltageData[0].phase2}V, phase3=${voltageData[0].phase3}V`);
-      }
       
       res.json(voltageData);
     } catch (error) {
@@ -1936,28 +2357,79 @@ export async function registerRoutes(
         return res.json([]);
       }
 
-      // Get specific device
       const deviceIdNum = parseInt(deviceId as string);
+      
+      // Try database first
+      const { db } = await import('./db');
+      const { devices, readings } = await import('@shared/schema');
+      
+      if (db) {
+        const { eq, gte, and } = await import('drizzle-orm');
+        
+        // Get device from database
+        const device = await db.select().from(devices).where(eq(devices.id, deviceIdNum)).limit(1);
+        
+        if (device.length === 0) {
+          return res.status(404).json({ message: 'Device not found' });
+        }
+        
+        // Get historical readings from database
+        const since = new Date(Date.now() - hoursNum * 60 * 60 * 1000);
+        const deviceReadings = await db.select()
+          .from(readings)
+          .where(and(
+            eq(readings.deviceId, deviceIdNum),
+            gte(readings.timestamp, since)
+          ))
+          .orderBy(readings.timestamp);
+        
+        console.log(`📋 Found ${deviceReadings.length} historical readings for device ${device[0].name}`);
+        
+        // Build current data from historical readings
+        const currentData = deviceReadings
+          .filter((r: any) => r.currentL1 || r.currentL2 || r.currentL3)
+          .map((r: any) => {
+            const date = new Date(r.timestamp);
+            return {
+              time: date.toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit', hour12: false }),
+              fullTime: date.toLocaleString('en', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }),
+              phase1: r.currentL1 || 0,
+              phase2: r.currentL2 || 0,
+              phase3: r.currentL3 || 0,
+              timestamp: r.timestamp
+            };
+          });
+        
+        if (currentData.length === 0) {
+          console.log('⚠️ No phase current data in database yet.');
+          return res.json([]);
+        }
+        
+        console.log(`✅ Returning ${currentData.length} current data points from database`);
+        if (currentData.length > 0) {
+          console.log(`   Sample: phase1=${currentData[0].phase1}A, phase2=${currentData[0].phase2}A, phase3=${currentData[0].phase3}A`);
+        }
+        
+        return res.json(currentData);
+      }
+      
+      // Fallback to mock storage
       const device = await storage.getDevice(deviceIdNum);
       
       if (!device) {
         return res.status(404).json({ message: 'Device not found' });
       }
       
-      // Get historical readings with stored phase currents
-      const readings = await storage.getMeterReadings(deviceIdNum);
+      const meterReadings = await storage.getMeterReadings(deviceIdNum);
       const now = new Date();
       const startDate = new Date(now.getTime() - hoursNum * 60 * 60 * 1000);
       
-      const filteredReadings = readings
+      const filteredReadings = meterReadings
         .filter((r: any) => new Date(r.timestamp) >= startDate)
         .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
       
-      console.log(`📋 Found ${filteredReadings.length} historical readings for device ${device.name}`);
-      
-      // Build current data from historical readings
       const currentData = filteredReadings
-        .filter((r: any) => r.currentL1 || r.currentL2 || r.currentL3) // Only include readings with phase current data
+        .filter((r: any) => r.currentL1 || r.currentL2 || r.currentL3)
         .map((r: any) => {
           const date = new Date(r.timestamp);
           return {
@@ -1969,16 +2441,6 @@ export async function registerRoutes(
             timestamp: r.timestamp
           };
         });
-      
-      if (currentData.length === 0) {
-        console.log('⚠️ No phase current data in historical readings yet. Wait for data collector to run.');
-        return res.json([]);
-      }
-      
-      console.log(`✅ Returning ${currentData.length} current data points`);
-      if (currentData.length > 0) {
-        console.log(`   Sample: phase1=${currentData[0].phase1}A, phase2=${currentData[0].phase2}A, phase3=${currentData[0].phase3}A`);
-      }
       
       res.json(currentData);
     } catch (error) {
@@ -2350,8 +2812,15 @@ export async function registerRoutes(
       let currentCount = 0;
       let devicesWithData = 0;
       let devicesWithoutData = 0;
+      let billingMetersCount = 0;
       
-      for (const device of onlineDevices) {
+      // IMPORTANT: Only sum energy/cost from billing meters to avoid double-counting
+      // (Sub-meters measure energy already counted by their parent main meters)
+      const billingMeters = onlineDevices.filter(d => d.isBillingMeter === true);
+      const allMetersForStats = onlineDevices; // Use all meters for power/voltage/current stats
+      
+      // Calculate energy and cost ONLY from billing meters
+      for (const device of billingMeters) {
         const readings = await storage.getMeterReadings(device.id, Math.ceil(periodHours));
         
         if (readings.length === 0) {
@@ -2403,6 +2872,45 @@ export async function registerRoutes(
         const deviceConsumption = maxEnergy - minEnergy;
         totalEnergy += deviceConsumption;
         sumOfIndividualPeaks += deviceMaxPower;
+        billingMetersCount++;
+      }
+      
+      // Calculate additional stats from ALL meters (not just billing meters)
+      for (const device of allMetersForStats) {
+        // Skip if already processed as billing meter
+        if (device.isBillingMeter) continue;
+        
+        const readings = await storage.getMeterReadings(device.id, Math.ceil(periodHours));
+        if (readings.length === 0) continue;
+        
+        const validReadings = readings.filter(isValidReading);
+        if (validReadings.length === 0) continue;
+        
+        let deviceMaxPower = 0;
+        for (const reading of validReadings) {
+          // Track power for statistics
+          if (reading.power) {
+            avgPower += reading.power;
+            powerCount++;
+            if (reading.power > maxPower) maxPower = reading.power;
+            if (reading.power > deviceMaxPower) deviceMaxPower = reading.power;
+          }
+          
+          // Track voltage
+          if (reading.voltage) {
+            avgVoltage += reading.voltage;
+            voltageCount++;
+          }
+          
+          // Track current
+          if (reading.current) {
+            avgCurrent += reading.current;
+            currentCount++;
+          }
+        }
+        
+        sumOfIndividualPeaks += deviceMaxPower;
+        devicesWithData++;
       }
       
       totalCost = totalEnergy * 8;
@@ -2467,12 +2975,14 @@ export async function registerRoutes(
           totalCost,
           avgPower,
           maxPower,
-          deviceCount: devicesWithData,
+          deviceCount: devicesWithData + billingMetersCount,
           avgVoltage,
           avgCurrent,
           onlineDevices: onlineDevices.length,
-          devicesWithData,
-          devicesWithoutData
+          devicesWithData: devicesWithData + billingMetersCount,
+          devicesWithoutData,
+          billingMetersCount,
+          billingMetersUsedForCost: billingMetersCount
         }
       });
     } catch (error) {
@@ -2532,6 +3042,120 @@ export async function registerRoutes(
       res.json({ message: 'BMS sync triggered successfully' });
     } catch (error) {
       res.status(500).json({ error: `Failed to trigger BMS sync: ${error}` });
+    }
+  });
+
+  // --- Predictive Analytics Routes ---
+  
+  /**
+   * GET /api/predictive/forecast
+   * Get demand forecast for devices
+   */
+  app.get("/api/predictive/forecast", async (req, res) => {
+    try {
+      const { PredictiveService } = await import('./analytics/predictive-service');
+      const service = new PredictiveService(storage);
+      
+      const deviceId = req.query.deviceId ? Number(req.query.deviceId) : undefined;
+      const forecasts = await service.generateDemandForecast(deviceId);
+      
+      res.json({
+        success: true,
+        forecasts,
+        timestamp: new Date()
+      });
+    } catch (error: any) {
+      console.error('Forecast generation failed:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to generate forecast',
+        error: error.message
+      });
+    }
+  });
+
+  /**
+   * GET /api/predictive/trends
+   * Analyze energy trends
+   */
+  app.get("/api/predictive/trends", async (req, res) => {
+    try {
+      const { PredictiveService } = await import('./analytics/predictive-service');
+      const service = new PredictiveService(storage);
+      
+      const deviceId = req.query.deviceId ? Number(req.query.deviceId) : undefined;
+      const period = (req.query.period as 'daily' | 'weekly' | 'monthly') || 'weekly';
+      
+      const trends = await service.analyzeTrends(deviceId, period);
+      
+      res.json({
+        success: true,
+        period,
+        trends,
+        timestamp: new Date()
+      });
+    } catch (error: any) {
+      console.error('Trend analysis failed:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to analyze trends',
+        error: error.message
+      });
+    }
+  });
+
+  /**
+   * GET /api/predictive/anomalies
+   * Detect anomalies in energy consumption
+   */
+  app.get("/api/predictive/anomalies", async (req, res) => {
+    try {
+      const { PredictiveService } = await import('./analytics/predictive-service');
+      const service = new PredictiveService(storage);
+      
+      const deviceId = req.query.deviceId ? Number(req.query.deviceId) : undefined;
+      const anomalies = await service.detectAnomalies(deviceId);
+      
+      res.json({
+        success: true,
+        count: anomalies.length,
+        anomalies,
+        timestamp: new Date()
+      });
+    } catch (error: any) {
+      console.error('Anomaly detection failed:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to detect anomalies',
+        error: error.message
+      });
+    }
+  });
+
+  /**
+   * GET /api/predictive/recommendations
+   * Get optimization recommendations
+   */
+  app.get("/api/predictive/recommendations", async (req, res) => {
+    try {
+      const { PredictiveService } = await import('./analytics/predictive-service');
+      const service = new PredictiveService(storage);
+      
+      const recommendations = await service.generateRecommendations();
+      
+      res.json({
+        success: true,
+        count: recommendations.length,
+        recommendations,
+        timestamp: new Date()
+      });
+    } catch (error: any) {
+      console.error('Recommendation generation failed:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to generate recommendations',
+        error: error.message
+      });
     }
   });
 

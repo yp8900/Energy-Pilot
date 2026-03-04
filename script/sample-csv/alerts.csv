@@ -1,0 +1,8 @@
+Id,DeviceId,Severity,Message,Timestamp,Acknowledged
+1,1,warning,High power consumption detected - exceeds 150kW threshold,2026-01-24 12:30:00,false
+2,2,critical,Communication timeout - device not responding,2026-01-25 08:15:00,true
+3,3,info,Scheduled maintenance completed successfully,2026-01-26 14:00:00,true
+4,4,warning,Power factor dropped below 0.92,2026-01-27 09:45:00,false
+5,2,warning,Voltage fluctuation detected on L1 phase,2026-01-28 11:20:00,false
+6,1,critical,Energy consumption spike - immediate attention required,2026-01-29 16:30:00,false
+7,5,critical,Device offline - unable to establish connection,2026-01-30 07:00:00,false

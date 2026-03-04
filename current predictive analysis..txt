@@ -1,0 +1,7 @@
+ Current State vs. ML Enhancement
+Currently Using:
+
+Exponential Smoothing (statistical, rule-based)
+Pattern recognition through hardcoded time-of-day logic
+Simple linear regression for trends
+Threshold-based anomaly detection

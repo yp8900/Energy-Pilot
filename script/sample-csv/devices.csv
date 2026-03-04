@@ -1,0 +1,6 @@
+Id,Name,Type,Location,IpAddress,Status
+1,Main Building Meter,Smart Meter,Building A - Ground Floor,192.168.1.100,online
+2,HVAC VFD Panel,PLC,Building A - Rooftop,192.168.1.101,online
+3,Lighting Controller,Smart Meter,Building B - 2nd Floor,192.168.1.102,online
+4,Production Line Meter,Smart Meter,Factory - Zone 1,192.168.1.103,online
+5,Emergency Generator,Sensor,Building C - Basement,192.168.1.104,offline

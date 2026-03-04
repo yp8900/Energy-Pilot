@@ -3,6 +3,7 @@ import session from "express-session";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import cors from "cors";
 
 // Global error handlers to prevent app crashes
 process.on('uncaughtException', (error) => {
@@ -17,6 +18,14 @@ process.on('unhandledRejection', (reason, promise) => {
 
 const app = express();
 const httpServer = createServer(app);
+
+// Enable CORS for separate frontend development
+if (process.env.NODE_ENV === "development") {
+  app.use(cors({
+    origin: 'http://localhost:5173',
+    credentials: true
+  }));
+}
 
 declare module "http" {
   interface IncomingMessage {
@@ -217,9 +226,12 @@ app.use((req, res, next) => {
   // doesn't interfere with the other routes
   if (process.env.NODE_ENV === "production") {
     serveStatic(app);
-  } else {
+  } else if (!process.env.VITE_DISABLED) {
+    // Only setup Vite middleware if not running in backend-only mode
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
+  } else {
+    log("Running in backend-only mode (Vite disabled)", "server");
   }
 
   // ALWAYS serve the app on the port specified in the environment variable PORT

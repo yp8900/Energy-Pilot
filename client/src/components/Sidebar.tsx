@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Server, BarChart3, AlertTriangle, Settings, LogOut, User, Zap, Database, Menu, Users, Network, Radio, Calculator } from "lucide-react";
+import { LayoutDashboard, Server, BarChart3, AlertTriangle, Settings, LogOut, User, Zap, Database, Menu, Users, Network, Radio, Calculator, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
@@ -12,8 +12,10 @@ const navItems = [
   { name: "Meters", icon: Zap, href: "/meters", roles: ["admin", "operator"] }, // Admin and operator
   { name: "BACnet Discovery", icon: Network, href: "/bacnet-discovery", roles: ["admin"] }, // Only admin
   { name: "Modbus Scanner", icon: Radio, href: "/modbus-scanner", roles: ["admin"] }, // Only admin
+  { name: "Energy Meters", icon: Zap, href: "/modbus-energy-discovery", roles: ["admin"] }, // Only admin
   { name: "Analytics", icon: BarChart3, href: "/analytics", roles: ["admin", "operator", "viewer"] },
   { name: "Custom Analytics", icon: Calculator, href: "/custom-analytics", roles: ["admin", "operator", "viewer"] },
+  { name: "Predictive Analysis", icon: TrendingUp, href: "/predictive-analysis", roles: ["admin", "operator", "viewer"] },
   { name: "Alarms", icon: AlertTriangle, href: "/alarms", roles: ["admin", "operator", "viewer"] },
   { name: "Thresholds", icon: Settings, href: "/alarm-thresholds", roles: ["admin", "operator", "viewer"] },
   { name: "BMS Management", icon: Database, href: "/bms-management", roles: ["admin"] }, // Only admin
